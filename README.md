@@ -157,13 +157,3 @@ http://localhost:3000/
    - Deployment priority score
 
 ---
-
-## Potential Future Work
-
-- Persistent spec storage
-- Versioned abstraction diffs
-- Multi-site comparison
-- Generalization scoring across tasks
-- Auto-eval harness generation
-- Simulation integration
-- Benchmark dataset export
