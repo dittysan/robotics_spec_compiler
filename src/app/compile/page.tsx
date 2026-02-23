@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
+/* ── Types ──────────────────────────────────────────────────────────── */
 
 type IntakeResponse =
   | {
@@ -16,8 +18,89 @@ type IntakeResponse =
   | { ok: false; error: string };
 
 type CompileResponse =
-  | { ok: true; stage1?: any; sceneSpec: any }
+  | { ok: true; stage1?: any; sceneSpec?: any }
   | { ok: false; error: string };
+
+/* ── Typewriter hook ────────────────────────────────────────────────── */
+
+function useTypewriter(text: string, speed = 10) {
+  const [displayed, setDisplayed] = useState("");
+  const idxRef = useRef(0);
+  const pauseRef = useRef(false);
+
+  useEffect(() => {
+    idxRef.current = 0;
+    pauseRef.current = false;
+    setDisplayed("");
+  }, [text]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (pauseRef.current) return;
+
+      idxRef.current++;
+      if (idxRef.current > text.length) {
+        // pause briefly, then reset to empty and start over
+        pauseRef.current = true;
+        setTimeout(() => {
+          idxRef.current = 0;
+          setDisplayed("");
+          pauseRef.current = false;
+        }, 600);
+        return;
+      }
+      setDisplayed(text.slice(0, idxRef.current));
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  return displayed;
+}
+
+/* ── Loading Modal ──────────────────────────────────────────────────── */
+
+function LoadingModal({ message }: { message: string }) {
+  const typed = useTypewriter(message, 35);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* backdrop blur */}
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+
+      {/* modal */}
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl px-10 py-8 flex flex-col items-center gap-5 min-w-[380px] max-w-[480px]">
+        {/* spinner */}
+        <div className="relative w-14 h-14">
+          <div className="absolute inset-0 rounded-full border-[3px] border-gray-200" />
+          <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-gray-900 animate-spin" />
+          <div className="absolute inset-2 rounded-full border-[2px] border-transparent border-b-blue-500 animate-spin" style={{ animationDirection: "reverse", animationDuration: "0.8s" }} />
+        </div>
+
+        {/* typewriter text */}
+        <div className="text-center min-h-[48px] flex items-center">
+          <span className="text-sm text-gray-700 font-mono">
+            {typed}
+            <span className="inline-block w-[2px] h-4 bg-gray-900 ml-0.5 animate-pulse align-middle" />
+          </span>
+        </div>
+
+        {/* subtle pulsing dots */}
+        <div className="flex gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse"
+              style={{ animationDelay: `${i * 200}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main page ──────────────────────────────────────────────────────── */
 
 export default function CompilePage() {
   const router = useRouter();
@@ -29,7 +112,7 @@ export default function CompilePage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
   const [loading, setLoading] = useState(false);
-  const [phase, setPhase] = useState<"idle" | "intake" | "compile">("idle");
+  const [phase, setPhase] = useState<"idle" | "intake" | "compile_stage1" | "compile_stage2">("idle");
   const [error, setError] = useState<string | null>(null);
 
   const followups = useMemo(() => {
@@ -41,6 +124,19 @@ export default function CompilePage() {
   const allAnswered = followups.every(
     (f) => (answers[f.value] ?? "").trim().length > 0
   );
+
+  const loadingMessage = (() => {
+    switch (phase) {
+      case "intake":
+        return "Extracting data...";
+      case "compile_stage1":
+        return "Building task, environment and failure_modes abstractions...";
+      case "compile_stage2":
+        return "Building skill capture, eval, and scoring abstractions...";
+      default:
+        return "";
+    }
+  })();
 
   async function runIntake() {
     setLoading(true);
@@ -79,8 +175,6 @@ export default function CompilePage() {
   }
 
   function buildIntakeFollowupsPayload() {
-    // Your stage1 compiler expects followup answers (ground truth).
-    // Keep it simple: map field -> answer string.
     return answers;
   }
 
@@ -95,29 +189,47 @@ export default function CompilePage() {
     }
 
     setLoading(true);
-    setPhase("compile");
     setError(null);
 
     try {
-      const res = await fetch("/api/compile", {
+      // ── Stage 1 ──
+      setPhase("compile_stage1");
+      const res1 = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          stage: 1,
           notes,
-          business_context: { priority_customer_business_value: businessValue },
           intake_extracted: intake.extracted,
           intake_followups: buildIntakeFollowupsPayload(),
         }),
       });
-
-      const json = (await res.json()) as CompileResponse;
-      if (!json.ok) {
-        setError(json.error);
+      const json1 = (await res1.json()) as CompileResponse;
+      if (!json1.ok) {
+        setError(json1.error);
         return;
       }
 
-      localStorage.setItem("latest_sceneSpec", JSON.stringify(json.sceneSpec));
-      if (json.stage1) localStorage.setItem("latest_stage1", JSON.stringify(json.stage1));
+      // ── Stage 2 ──
+      setPhase("compile_stage2");
+      const res2 = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stage: 2,
+          notes,
+          stage1_output: json1.stage1,
+          business_context: { priority_customer_business_value: businessValue },
+        }),
+      });
+      const json2 = (await res2.json()) as CompileResponse;
+      if (!json2.ok) {
+        setError(json2.error);
+        return;
+      }
+
+      localStorage.setItem("latest_sceneSpec", JSON.stringify(json2.sceneSpec));
+      if (json1.stage1) localStorage.setItem("latest_stage1", JSON.stringify(json1.stage1));
 
       router.push("/spec");
     } catch (e: any) {
@@ -130,6 +242,9 @@ export default function CompilePage() {
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: 24 }}>
+      {/* ── Loading overlay ──────────────────────────────── */}
+      {loading && <LoadingModal message={loadingMessage} />}
+
       <h1 style={{ fontSize: 28, fontWeight: 700 }}>Scene → Spec Compiler</h1>
       <p style={{ color: "#555", marginTop: 6 }}>
         Step 1: Intake extraction + followups. Step 2: Compile full spec.
@@ -171,35 +286,41 @@ export default function CompilePage() {
           </div>
         </div>
 
-        <button
-          onClick={runIntake}
-          disabled={loading || notes.trim().length < 20}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            background: "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
-          }}
-        >
-          {phase === "intake" ? "Extracting…" : "Run Intake"}
-        </button>
-
-        <button
-          onClick={runCompile}
-          disabled={loading || !intake || (needsFollowups && !allAnswered)}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: !intake || (needsFollowups && !allAnswered) ? 0.5 : 1,
-          }}
-        >
-          {phase === "compile" ? "Compiling…" : "Compile Spec"}
-        </button>
+        {!intake || !("ok" in intake) || !intake.ok ? (
+          <button
+            onClick={runIntake}
+            disabled={loading || notes.trim().length < 20}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              cursor: loading || notes.trim().length < 20 ? "not-allowed" : "pointer",
+              opacity: loading || notes.trim().length < 20 ? 0.5 : 1,
+            }}
+          >
+            {phase === "intake" ? "Extracting…" : "Run Intake"}
+          </button>
+        ) : (
+          <button
+            onClick={runCompile}
+            disabled={loading || (needsFollowups && !allAnswered)}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              cursor: loading || (needsFollowups && !allAnswered) ? "not-allowed" : "pointer",
+              opacity: loading || (needsFollowups && !allAnswered) ? 0.5 : 1,
+            }}
+          >
+            {phase === "compile_stage1" || phase === "compile_stage2"
+              ? "Compiling…"
+              : "Compile Spec"}
+          </button>
+        )}
       </div>
 
       {error && (

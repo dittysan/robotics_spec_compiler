@@ -801,16 +801,29 @@ ${JSON.stringify({
 
 export async function POST(request: NextRequest) {
     try {
-        const { notes, intake_extracted, intake_followups, business_context } = await request.json();
-    
+        const body = await request.json();
+        const { stage } = body;
+
+        if (stage === 1) {
+            const { notes, intake_extracted, intake_followups } = body;
+            const stage1Out = await runStage1Compilation({ notes, intake_extracted, intake_followups });
+            return NextResponse.json({ ok: true, stage1: stage1Out });
+        }
+
+        if (stage === 2) {
+            const { notes, stage1_output, business_context } = body;
+            const full = await stage2Compilation({ notes, stage1_output, business_context });
+            return NextResponse.json({ ok: true, sceneSpec: full });
+        }
+
+        // Default: run both stages (backwards compatible)
+        const { notes, intake_extracted, intake_followups, business_context } = body;
         const stage1Out = await runStage1Compilation({ notes, intake_extracted, intake_followups });
-    
         const full = await stage2Compilation({
           notes,
           stage1_output: stage1Out,
           business_context,
         });
-    
         return NextResponse.json({ ok: true, stage1: stage1Out, sceneSpec: full });
       } catch (err: any) {
         return NextResponse.json({ ok: false, error: err.message }, { status: 400 });
