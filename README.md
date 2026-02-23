@@ -2,7 +2,7 @@
 
 From messy field notes to structured robotics deployment specs.
 
-Scene Compiler is a two-stage LLM-powered system that translates real-world customer site observations into formal robotics task abstractions, environment models, evaluation frameworks, and deployment priority scoring.
+Scene Compiler is a two-stage LLM-powered system that translates real-world task observations into formal robotics task abstractions, environment models, evaluation frameworks, and deployment priority scoring.
 
 It is designed to bridge the gap between research frontier and real-world automation.
 
