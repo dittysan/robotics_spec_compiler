@@ -128,6 +128,7 @@ git clone https://github.com/yourname/scene-compiler.git
 cd scene-compiler
 
 2. Install dependencies
+pip install -r requirements.txt
 
 
 3. Add environment variables
