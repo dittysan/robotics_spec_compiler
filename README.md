@@ -124,22 +124,24 @@ If information is missing:
 ## Running Locally
 
 1. Clone repo
+   
 git clone https://github.com/yourname/scene-compiler.git
 cd scene-compiler
 
 2. Install dependencies
+   
 pip install -r requirements.txt
 
-
 3. Add environment variables
-Create `.env.local`:
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
+   
+Create `.env.local`: OPENAI_API_KEY=your_openai_key | ANTHROPIC_API_KEY=your_anthropic_key
 
 4. Run
+   
 npm run dev
 
 5. Open
+   
 http://localhost:3000/
 
 ---
